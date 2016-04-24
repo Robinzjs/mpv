@@ -271,7 +271,6 @@ static int reinit(struct gl_hwdec *hw, struct mp_image_params *params)
     gl->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl->BindTexture(GL_TEXTURE_2D, 0);
 
-
     return 0;
 fail:
     destroy_objects(hw);
@@ -315,6 +314,7 @@ static int create_video_proc(struct gl_hwdec *hw, struct mp_image_params *params
     if (FAILED(hr))
         goto fail;
 
+    // Note: libavcodec does not support cropping left/top with hwaccel.
     RECT src_rc = {
         .right = params->w,
         .bottom = params->h,
@@ -322,6 +322,18 @@ static int create_video_proc(struct gl_hwdec *hw, struct mp_image_params *params
     ID3D11VideoContext_VideoProcessorSetStreamSourceRect(p->video_ctx,
                                                          p->video_proc,
                                                          0, TRUE, &src_rc);
+
+    // This is supposed to stop drivers from fucking up the video quality.
+    ID3D11VideoContext_VideoProcessorSetStreamAutoProcessingMode(p->video_ctx,
+                                                                 p->video_proc,
+                                                                 0, FALSE);
+
+    D3D11_VIDEO_PROCESSOR_COLOR_SPACE csp = {
+        .YCbCr_Matrix = params->colorspace != MP_CSP_BT_601,
+    };
+    ID3D11VideoContext_VideoProcessorSetStreamColorSpace(p->video_ctx,
+                                                         p->video_proc,
+                                                         0, &csp);
 
     return 0;
 fail:
