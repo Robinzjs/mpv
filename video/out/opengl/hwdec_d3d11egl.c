@@ -37,7 +37,6 @@ struct priv {
 
     EGLDisplay egl_display;
     EGLConfig  egl_config;
-    EGLint     alpha;
     EGLSurface egl_surface;
 
     ID3D11Texture2D *texture;
@@ -174,19 +173,14 @@ static int create(struct gl_hwdec *hw)
         EGL_GREEN_SIZE, 8,
         EGL_BLUE_SIZE, 8,
         EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-        EGL_ALPHA_SIZE, 0,
+        EGL_ALPHA_SIZE, 8,
+        EGL_BIND_TO_TEXTURE_RGBA, EGL_TRUE,
         EGL_NONE
     };
     EGLint count;
     if (!eglChooseConfig(p->egl_display, attrs, &p->egl_config, 1, &count) ||
         !count) {
         MP_ERR(hw, "Failed to get EGL surface configuration\n");
-        goto fail;
-    }
-
-    if (!eglGetConfigAttrib(p->egl_display, p->egl_config,
-                            EGL_BIND_TO_TEXTURE_RGBA, &p->alpha)) {
-        MP_FATAL(hw, "Failed to query EGL surface alpha\n");
         goto fail;
     }
 
@@ -249,7 +243,7 @@ static int reinit(struct gl_hwdec *hw, struct mp_image_params *params)
     EGLint attrib_list[] = {
         EGL_WIDTH, params->w,
         EGL_HEIGHT, params->h,
-        EGL_TEXTURE_FORMAT, p->alpha ? EGL_TEXTURE_RGBA : EGL_TEXTURE_RGB,
+        EGL_TEXTURE_FORMAT, EGL_TEXTURE_RGBA,
         EGL_TEXTURE_TARGET, EGL_TEXTURE_2D,
         EGL_NONE
     };
