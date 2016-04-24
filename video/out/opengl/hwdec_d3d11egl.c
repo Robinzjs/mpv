@@ -43,11 +43,29 @@ struct priv {
     ID3D11VideoProcessor *video_proc;
     ID3D11VideoProcessorEnumerator *vp_enum;
     ID3D11VideoProcessorOutputView *out_view;
+    int c_w, c_h;
 
     GLuint gl_texture;
 };
 
-static void destroy_textures(struct gl_hwdec *hw)
+static void destroy_video_proc(struct gl_hwdec *hw)
+{
+    struct priv *p = hw->priv;
+
+    if (p->out_view)
+        ID3D11VideoProcessorOutputView_Release(p->out_view);
+    p->out_view = NULL;
+
+    if (p->video_proc)
+        ID3D11VideoProcessor_Release(p->video_proc);
+    p->video_proc = NULL;
+
+    if (p->vp_enum)
+        ID3D11VideoProcessorEnumerator_Release(p->vp_enum);
+    p->vp_enum = NULL;
+}
+
+static void destroy_objects(struct gl_hwdec *hw)
 {
     struct priv *p = hw->priv;
     GL *gl = hw->gl;
@@ -61,28 +79,18 @@ static void destroy_textures(struct gl_hwdec *hw)
     }
     p->egl_surface = NULL;
 
-    if (p->out_view)
-        ID3D11VideoProcessorOutputView_Release(p->out_view);
-    p->out_view = NULL;
-
     if (p->texture)
         ID3D11Texture2D_Release(p->texture);
     p->texture = NULL;
 
-    if (p->video_proc)
-        ID3D11VideoProcessor_Release(p->video_proc);
-    p->video_proc = NULL;
-
-    if (p->vp_enum)
-        ID3D11VideoProcessorEnumerator_Release(p->vp_enum);
-    p->vp_enum = NULL;
+    destroy_video_proc(hw);
 }
 
 static void destroy(struct gl_hwdec *hw)
 {
     struct priv *p = hw->priv;
 
-    destroy_textures(hw);
+    destroy_objects(hw);
 
     if (p->video_ctx)
         ID3D11VideoContext_Release(p->video_ctx);
@@ -203,7 +211,7 @@ static int reinit(struct gl_hwdec *hw, struct mp_image_params *params)
     GL *gl = hw->gl;
     HRESULT hr;
 
-    destroy_textures(hw);
+    destroy_objects(hw);
 
     assert(params->imgfmt == hw->driver->imgfmt);
 
@@ -263,11 +271,24 @@ static int reinit(struct gl_hwdec *hw, struct mp_image_params *params)
     gl->TexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     gl->BindTexture(GL_TEXTURE_2D, 0);
 
+
+    return 0;
+fail:
+    destroy_objects(hw);
+    return -1;
+}
+
+static int create_video_proc(struct gl_hwdec *hw, struct mp_image_params *params)
+{
+    struct priv *p = hw->priv;
+    HRESULT hr;
+
+    destroy_video_proc(hw);
+
     // Note: we skip any deinterlacing considerations for now.
     D3D11_VIDEO_PROCESSOR_CONTENT_DESC vpdesc = {
-        // xxx: need to get uncropped sizes
-        .InputWidth = params->w,
-        .InputHeight = params->h,
+        .InputWidth = p->c_w,
+        .InputHeight = p->c_h,
         .OutputWidth = params->w,
         .OutputHeight = params->h,
     };
@@ -296,7 +317,7 @@ static int reinit(struct gl_hwdec *hw, struct mp_image_params *params)
 
     return 0;
 fail:
-    destroy_textures(hw);
+    destroy_video_proc(hw);
     return -1;
 }
 
@@ -308,13 +329,22 @@ static int map_image(struct gl_hwdec *hw, struct mp_image *hw_image,
     HRESULT hr;
     ID3D11VideoProcessorInputView *in_view = NULL;
 
-    if (!p->out_view)
+    if (!p->gl_texture)
         return -1;
 
     ID3D11Texture2D *d3d_tex = d3d11_texture_in_mp_image(hw_image);
     int d3d_subindex = d3d11_subindex_in_mp_image(hw_image);
     if (!d3d_tex)
         return -1;
+
+    D3D11_TEXTURE2D_DESC texdesc;
+    ID3D11Texture2D_GetDesc(d3d_tex, &texdesc);
+    if (!p->video_proc || p->c_w != texdesc.Width || p->c_h != texdesc.Height) {
+        p->c_w = texdesc.Width;
+        p->c_h = texdesc.Height;
+        if (create_video_proc(hw, &hw_image->params) < 0)
+            return -1;
+    }
 
     D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC indesc = {
         .FourCC = 0, // huh?
