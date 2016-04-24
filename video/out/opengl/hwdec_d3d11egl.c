@@ -315,6 +315,14 @@ static int create_video_proc(struct gl_hwdec *hw, struct mp_image_params *params
     if (FAILED(hr))
         goto fail;
 
+    RECT src_rc = {
+        .right = params->w,
+        .bottom = params->h,
+    };
+    ID3D11VideoContext_VideoProcessorSetStreamSourceRect(p->video_ctx,
+                                                         p->video_proc,
+                                                         0, TRUE, &src_rc);
+
     return 0;
 fail:
     destroy_video_proc(hw);
