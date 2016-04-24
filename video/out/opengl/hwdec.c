@@ -48,8 +48,8 @@ static const struct gl_hwdec_driver *const mpgl_hwdec_drivers[] = {
 #endif
 #if HAVE_DXVA2_HWACCEL
 #if HAVE_EGL_ANGLE
-    &gl_hwdec_dxva2egl,
     &gl_hwdec_d3d11egl,
+    &gl_hwdec_dxva2egl,
 #endif
 #if HAVE_GL_DXINTEROP
     &gl_hwdec_dxva2gldx,
